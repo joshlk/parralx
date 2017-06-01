@@ -7,7 +7,7 @@ vision_client = vision.Client(project="parralx")
 def plarralx_verifiy(image_url):
     image = vision_client.image(source_uri=image_url)
     
-    res = image.detect([Feature('LABEL_DETECTION'), Feature('LOGO_DETECTION'), Feature('SAFE_SEARCH_DETECTION')])
+    res = image.detect([Feature('LABEL_DETECTION', 10), Feature('LOGO_DETECTION', 10), Feature('SAFE_SEARCH_DETECTION')])
     r = res[0]
     
     # Logos
