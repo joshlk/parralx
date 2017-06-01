@@ -1,8 +1,4 @@
-import io
-import os
-from pprint import pprint
 
-# Imports the Google Cloud client library
 from google.cloud import vision
 from google.cloud.vision.feature import Feature
 

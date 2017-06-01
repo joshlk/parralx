@@ -1,132 +1,32 @@
-import os
 import sys
-import json
-from sqlalchemy import create_engine
-import pandas as pd
 
-import requests
 from flask import Flask, request, send_file
+from flask.json import jsonify
+from verify import plarralx_verifiy
 
 app = Flask(__name__)
 
-VERIFY_TOKEN = os.environ["VERIFY_TOKEN"]
-
-db_url = os.environ['DATABASE_URL']
-db_engine = create_engine(db_url)
 
 @app.route('/', methods=['GET'])
 def verify():
-    # when the endpoint is registered as a webhook, it must echo back
-    # the 'hub.challenge' value it receives in the query arguments
-    if request.args.get("hub.mode") == "subscribe" and request.args.get("hub.challenge"):
-        if not request.args.get("hub.verify_token") == os.environ["VERIFY_TOKEN"]:
-            return "Verification token mismatch", 403
-        return request.args["hub.challenge"], 200
-
     return "Hello world", 200
 
 
-@app.route('/terms_of_service_and_privacy_policy', methods=['GET'])
-def terms_of_service_and_privacy_policy():
-    return send_file('terms_of_service_and_privacy_policy.html', mimetype='text/html')
-
-
-@app.route('/', methods=['POST'])
+@app.route('/verify', methods=['GET'])
 def webhook():
 
-    # endpoint for processing incoming messaging events
+    # Params
+    try:
+        image_url = request.args['image_url']
+    except KeyError:
+        return "Must include image_url arg", 400
 
-    data = request.get_json()
-    log(data)  # you may not want to log every incoming message in production, but it's good for testing
+    try:
+        result = plarralx_verifiy(image_url=image_url)
+    except ValueError:
+        return "image_url invalid", 400
 
-    # If message sent to bot
-    if data["object"] == "page":
-
-        for entry in data["entry"]:
-            for messaging_event in entry["messaging"]:
-
-                if messaging_event.get("message"):  # someone sent us a message
-
-                    sender_id = messaging_event["sender"]["id"]        # the facebook ID of the person sending you the message
-                    recipient_id = messaging_event["recipient"]["id"]  # the recipient's ID, which should be your page's facebook ID
-                    message_text = messaging_event["message"]["text"]  # the message's text
-
-                    user_registered, user_info = is_user_registered(sender_id)
-
-                    if user_registered:
-                        user_email = user_info['email']
-                        send_message(sender_id, "Roger that! 🐶 {} {}".format(sender_id, user_email))
-
-                    else:
-                        send_message(sender_id, "You haven't yet registered with Beeko".format(sender_id))
-
-                if messaging_event.get("delivery"):  # delivery confirmation
-                    pass
-
-                if messaging_event.get("optin"):  # optin confirmation
-                    pass
-
-                if messaging_event.get("postback"):  # user clicked/tapped "postback" button in earlier message
-                    pass
-
-    return "ok", 200
-
-
-def is_user_registered(fb_user_id):
-    fb_user_id = int(fb_user_id)
-    users_tb = pd.read_sql_table('monzo_users', db_engine)
-    user_info = users_tb[users_tb['fb_messenger_psid']==fb_user_id]
-
-    if len(user_info) == 1:  # If they are registered multiple times it wont allow you to proceed
-        return True, user_info.iloc[0]
-    else:
-        return False, None
-
-def is_user_registered(fb_user_id):
-    fb_user_id = str(fb_user_id)
-    users_tb = pd.read_sql_table('monzo_users', db_engine)
-    user_info = users_tb[users_tb['fb_messenger_psid']==fb_user_id]
-
-    if len(user_info) == 1:  # If they are registered multiple times it wont allow you to proceed
-        return True, user_info.iloc[0]
-    else:
-        return False, None
-
-@app.route('/internal/notify_token_expire/{VERIFY_TOKEN}/<fb_messenger_psid>'.format(VERIFY_TOKEN=VERIFY_TOKEN),
-           methods=['GET'])
-def notify_token_expire(fb_messenger_psid):
-    send_message(fb_messenger_psid, "Your token has expired. Please update it")
-    return "ok", 200
-
-@app.route('/internal/notify_partner_purchase/{VERIFY_TOKEN}/<fb_messenger_psid>/<merchant>/<count>'.format(VERIFY_TOKEN=VERIFY_TOKEN),
-           methods=['GET'])
-def notify_partner_purchase(fb_messenger_psid, merchant, count):
-    send_message(fb_messenger_psid, "Woo a total of {} purchases at {} 💵".format(count, merchant))
-    return "ok", 200
-
-
-def send_message(recipient_id, message_text):
-
-    log("sending message to {recipient}: {text}".format(recipient=recipient_id, text=message_text))
-
-    params = {
-        "access_token": os.environ["PAGE_ACCESS_TOKEN"]
-    }
-    headers = {
-        "Content-Type": "application/json"
-    }
-    data = json.dumps({
-        "recipient": {
-            "id": recipient_id
-        },
-        "message": {
-            "text": message_text
-        }
-    })
-    r = requests.post("https://graph.facebook.com/v2.6/me/messages", params=params, headers=headers, data=data)
-    if r.status_code != 200:
-        log(r.status_code)
-        log(r.text)
+    return jsonify(result)
 
 
 def log(message):  # simple wrapper for logging to stdout on heroku
